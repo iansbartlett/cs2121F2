@@ -18,12 +18,18 @@
 
 rjmp start
 
-    target_string: .db "abcdefghijklmnop", 0x0, 0x0
+    target_string: .db "abcdefghijklmnopWORKING", 0x0, 0x0
 
 start:
 
    ldi ZL, low(target_string<<1)
    ldi ZH, high(target_string<<1) 
+
+   //Initialize stack pointer
+   ldi r17, low(RAMEND)
+   out SPL, r17
+   ldi r17, high(RAMEND)
+   out SPH, r17
 
    ldi cursor, 0x0
    push cursor
