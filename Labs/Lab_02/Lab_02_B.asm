@@ -27,20 +27,30 @@
 rjmp start
 
 start:
-defstring "Ian"
-defstring "Bartlett"
-defstring "and"
 defstring "Aaron"
 defstring "Schneider"
+defstring "and"
+defstring "Ian"
+defstring "Bartlett"
 
 ldi ZL, low(NEXT_STRING<<1)
 ldi ZH, high(NEXT_STRING<<1)
 
+//Initialize stack pointer
+ldi r17, low(RAMEND)
+out SPL, r17
+ldi r17, high(RAMEND)
+out SPH, r17
+
 ldi strLength,0 
 
-rjmp RecSearch
+rcall RecSearch
 
 recSearch:
+
+//Where am I?
+push ZH
+push ZL
 
 lpm nextAddressL, Z+
 lpm nextAddressH, Z+
@@ -55,19 +65,32 @@ breq storeLen
 inc lenCount
 rjmp countingLoop
 
+//How long was my string?
+push lenCount
+
 storeLen:
-cp strLength, lenCount
+cp lenCount, strLength 
 brlt nextAddrs
 mov strLength, lenCount
 
-nextAddrs:
+cpi nextAddressL, 0x0
+breq returnSequence
 
+cpi nextAddressH, 0x0
+breq returnSequence
+
+nextAddrs:
+mov ZL, nextAddressL
+mov ZH, nextAddressH
 //save the next address into registers
 //cycle through string and count
 //change Z using address saved into registers
 //breq blah
-rjmp RecSearch//call again
+rcall RecSearch//call again
 
+returnSequence:
 
+//Do stuff before returning!
 
+ret
 
