@@ -86,11 +86,23 @@ mov ZH, nextAddressH
 //cycle through string and count
 //change Z using address saved into registers
 //breq blah
-rcall RecSearch//call again
+
+rcall recSearch//call again
 
 returnSequence:
+//Pop lenCount from this iteration
+pop strLength
+//Compare it to the return length from the function above
+cp strLength, lenCount
+brlt return 
+//If popped value is greater than return, overwrite:
+//Overwrite return length w/ popped length
+mov lenCount, strLength
+//Overwrite Z register with popped location
+pop ZL
+pop ZH
 
-//Do stuff before returning!
+return: ret
 
-ret
-
+end:
+rjmp end
