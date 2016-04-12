@@ -102,11 +102,11 @@ returnSequence:
 //Pop lenCount from this iteration
 pop lenCount
 //Compare it to the return length from the function above
-cp strLength, lenCount
+cp lenCount, strLength
 brlt return_unchanged 
 //If popped value is greater than return, overwrite:
 //Overwrite return length w/ popped length
-mov lenCount, strLength
+mov strLength, lenCount
 //Overwrite Z register with popped location
 pop ZL
 pop ZH
@@ -118,7 +118,7 @@ return_unchanged:
 //Move stack pointer down over unused values
 in YL, SPL
 in YH, SPH
-adiw Y, 3
+adiw Y, 2
 out SPL, YL
 out SPH, YH
 
