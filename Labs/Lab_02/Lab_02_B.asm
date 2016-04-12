@@ -29,9 +29,10 @@ rjmp start
 start:
 defstring "Aaron"
 defstring "Schneider"
+defstring "BartlettBartlett1"
 defstring "and"
 defstring "Ian"
-defstring "Bartlett"
+
 
 ldi ZL, low(NEXT_STRING<<1)
 ldi ZH, high(NEXT_STRING<<1)
@@ -44,7 +45,14 @@ out SPH, r17
 
 ldi strLength,0 
 
-rcall RecSearch
+rcall recSearch
+
+end:
+rjmp end
+
+
+//FUNCTIONS
+
 
 recSearch:
 
@@ -73,11 +81,11 @@ cp lenCount, strLength
 brlt nextAddrs
 mov strLength, lenCount
 
+//MAY BE A PROBLEM- DOES NOT CHECK IF HIGH BYTE NONZERO
+
 cpi nextAddressL, 0x0
 breq returnSequence
 
-cpi nextAddressH, 0x0
-breq returnSequence
 
 nextAddrs:
 mov ZL, nextAddressL
@@ -103,6 +111,3 @@ pop ZL
 pop ZH
 
 return: ret
-
-end:
-rjmp end
