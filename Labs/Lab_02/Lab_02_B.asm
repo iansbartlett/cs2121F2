@@ -26,13 +26,14 @@
 
 rjmp start
 
-start:
 defstring "Aaron"
 defstring "Schneider"
-defstring "BartlettBartlett1"
+defstring "BartlettBartlett11"
 defstring "and"
 defstring "Ian"
+defstring "Testing"
 
+start:
 
 ldi ZL, low(NEXT_STRING<<1)
 ldi ZH, high(NEXT_STRING<<1)
@@ -53,6 +54,14 @@ rjmp end
 
 //FUNCTIONS
 
+//***************************
+//Function: recSearch
+//Recursively finds longest string in linked list
+//Arguments: next address, stored in Z
+//Returns: 
+// -current best guess for highest value, stored in strLength(r16)
+// -current best guess for string location, stored in Z
+//***************************
 
 recSearch:
 
@@ -69,45 +78,50 @@ countingLoop:
 
 lpm currChar, Z+
 cpi currChar, 0x0
-breq storeLen
+breq storeLength
 inc lenCount
 rjmp countingLoop
 
 //How long was my string?
-push lenCount
 
-storeLen:
-cp lenCount, strLength 
-brlt nextAddrs
-mov strLength, lenCount
+storeLength:
+push lenCount
 
 //MAY BE A PROBLEM- DOES NOT CHECK IF HIGH BYTE NONZERO
 
 cpi nextAddressL, 0x0
 breq returnSequence
 
-
+//Call again
 nextAddrs:
 mov ZL, nextAddressL
 mov ZH, nextAddressH
-//save the next address into registers
-//cycle through string and count
-//change Z using address saved into registers
-//breq blah
-
-rcall recSearch//call again
+rcall recSearch
 
 returnSequence:
 //Pop lenCount from this iteration
-pop strLength
+pop lenCount
 //Compare it to the return length from the function above
 cp strLength, lenCount
-brlt return 
+brlt return_unchanged 
 //If popped value is greater than return, overwrite:
 //Overwrite return length w/ popped length
 mov lenCount, strLength
 //Overwrite Z register with popped location
 pop ZL
 pop ZH
+
+rjmp return
+
+return_unchanged:
+
+//Move stack pointer down over unused values
+in YL, SPL
+in YH, SPH
+adiw Y, 3
+out SPL, YL
+out SPH, YH
+
+rjmp return
 
 return: ret
