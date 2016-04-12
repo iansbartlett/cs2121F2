@@ -69,6 +69,7 @@ recSearch:
 ldi lenCount, 0
 
 cpi ZL, 0x0
+cpc ZH, lenCount
 breq return
 
 //Where am I?
@@ -109,7 +110,7 @@ returnSequence:
 pop lenCount
 //Compare it to the return length from the function above
 cp lenCount, strLength
-brlt return_unchanged 
+brlo return_unchanged 
 //If popped value is greater than return, overwrite:
 //Overwrite return length w/ popped length
 mov strLength, lenCount
