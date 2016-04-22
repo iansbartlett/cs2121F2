@@ -28,10 +28,11 @@ rjmp start
 
 defstring "Aaron"
 defstring "Schneider"
-defstring "BartlettBartlett11"
+defstring "Bartlett"
 defstring "and"
 defstring "Ian"
 defstring "Testing"
+
 
 start:
 
@@ -65,6 +66,12 @@ rjmp end
 
 recSearch:
 
+ldi lenCount, 0
+
+cpi ZL, 0x0
+cpc ZH, lenCount
+breq return
+
 //Where am I?
 push ZH
 push ZL
@@ -72,7 +79,7 @@ push ZL
 lpm nextAddressL, Z+
 lpm nextAddressH, Z+
 
-ldi lenCount, 0
+
 
 countingLoop:
 
@@ -103,7 +110,7 @@ returnSequence:
 pop lenCount
 //Compare it to the return length from the function above
 cp lenCount, strLength
-brlt return_unchanged 
+brlo return_unchanged 
 //If popped value is greater than return, overwrite:
 //Overwrite return length w/ popped length
 mov strLength, lenCount
