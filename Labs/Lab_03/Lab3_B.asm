@@ -3,11 +3,12 @@
 
 .include "m2560def.inc"
 
-.equ PATTERN = 0b10101010
+.equ PATTERN = 0b1100110000110011
 
 .def temp = r16
 .def leds = r17
-
+//Possibly better naming needed: this register holds the extra bits of the sequence
+.def leds_extra = r18
 ; The macro clears a word (2 bytes) in a memory
 ; the parameter @0 is the memory address for that word
 .macro clear
@@ -39,7 +40,10 @@ main:
 //Enable Timer0 interrupt
 //Enable interrupts globablly
 
-ldi leds, PATTERN
+
+
+ldi leds, low(PATTERN)
+ldi leds_extra, high(PATTERN)
 clear TempCounter
 clear SecondCounter
 
@@ -90,7 +94,16 @@ TimerInterrupt:
    cpc r25, temp
    brne NotSecond
 
-   com leds
+   //Updated LED pattern
+   lsr leds_extra
+   ror leds
+   brcs firstBitSet
+   rjmp writeLEDs
+
+firstBitSet:
+   sbr leds_extra, 0b10000000
+
+writeLEDs:
    out PORTC, leds
    clear TempCounter 
 
