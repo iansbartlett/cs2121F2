@@ -132,6 +132,5 @@ EndIF:
    pop YH
    pop temp
    out SREG, temp
-   reti
-
+   
 reti
