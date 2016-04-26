@@ -19,6 +19,7 @@
 .def PB1Count = r20
 .def read = r21
 .def readCounter = r22
+.def leds_buffer = r23
 
 ; The macro clears a word (2 bytes) in a memory
 ; the parameter @0 is the memory address for that word
@@ -93,6 +94,7 @@ RESET:
 
 	clr readCounter
 	clr buttonStatus
+	clr leds_buffer
 
 rjmp main 
 
@@ -158,7 +160,8 @@ storePB0:
    inc readCounter
    lsl read
    
-   out PORTC, read
+   //Debug
+   //out PORTC, read
 
    cpi readCounter, SEQUENCE_COUNT
    breq outputBuffer
@@ -195,7 +198,8 @@ storePB1:
    inc readCounter
    lsl read
    inc read
-   out PORTC, read
+   //Debug
+   //out PORTC, read
 
    cpi readCounter, SEQUENCE_COUNT
    breq outputBuffer
@@ -204,7 +208,7 @@ storePB1:
 
 outputBuffer:
    clr readCounter
-   mov leds, read
+   mov leds_buffer, read
    clr read
 
    rjmp secondRoutine
@@ -235,10 +239,37 @@ writeLEDs:
    lds r25, SecondCounter+1
    adiw r25:r24, 1
 
+   ldi temp, 0b1
+   and temp, r24
+   breq oddSecond
+   clr temp
+   out PORTC, temp
+   rjmp checkSeconds
 
+oddSecond:
+   out PORTC, leds
+
+checkSeconds:
+
+   cpi r24, SEQUENCE_COUNT
+   breq endDisplay
 
    sts SecondCounter, r24
-   sts SecondCounter, r25
+   sts SecondCounter+1, r25
+
+   rjmp EndIF
+
+endDisplay:
+   clear SecondCounter
+   cpi leds_buffer, 0b0
+   brne sequenceQueued
+   clr leds
+    
+   rjmp EndIF
+
+sequenceQueued:
+   mov leds, leds_buffer
+   clr leds_buffer
 
    rjmp EndIF
 
