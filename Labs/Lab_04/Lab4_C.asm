@@ -17,23 +17,33 @@
 .def readFlag = r23
 .def countDigit = r24
 .def ourNumber = r25
+.def temp3 = r10
+
 
 .equ PORTADIR = 0xF0
 .equ INITCOLMASK = 0xEF
 .equ INITROWMASK = 0x01
 .equ ROWMASK = 0x0F
+.equ HUNDREDS_PLACE_SET = 0b10
+
 
 .macro do_lcd_command
 	ldi r16, @0
 	rcall lcd_command
 	rcall lcd_wait
 .endmacro
+
 .macro do_lcd_data
 	ld r16, @0
 	rcall lcd_data
 	rcall lcd_wait
 .endmacro
 
+.dseg
+
+inputBCD: .byte 3
+
+.cseg
 .org 0
 	jmp RESET
 
@@ -66,22 +76,22 @@ RESET:
 	do_lcd_command 0b00001110 ; Cursor on, bar, no blink
 
     clr accum
+ 
+    ldi r16, ASCII_OFFSET
+    add r16, accum
+    rcall lcd_data 
+    rcall lcd_wait
 
 	do_lcd_command 0b11000000
 	
 	clr countDigit
+	clr ourNumber
+
+    ldi XL, low(inputBCD)
+	ldi XH, high(inputBCD)
 
 //Begin main
 main:
-   
-   do_lcd_command 0b10000000  
-  
-   ldi r16, ASCII_OFFSET
-   add r16, accum
-   rcall lcd_data 
-   rcall lcd_wait
-
-   do_lcd_command 0b11000000
 
    ldi cmask, INITCOLMASK
    clr col
@@ -121,10 +131,12 @@ nextcol:
    rjmp colloop
 
 convert_end:
-   //temp1 IS r16
-   // hax hax hax
+
    cpi readFlag, 1
    breq main
+
+   inc countDigit
+   st X+, temp1
 
    ldi temp2, ASCII_OFFSET
    add temp1, temp2
@@ -142,14 +154,13 @@ convert:
    cpi row, 3
    breq symbols
    
-   inc countDigit
    mov temp1, row
    lsl temp1
    add temp1, row
    add temp1, col
    inc temp1
    //subi temp1, -'1'
-   push temp1
+
    jmp convert_end
    
 symbols: 
@@ -167,6 +178,9 @@ zero:
 
 letters:
 
+   cpi readFlag, 1
+   breq main
+
    cpi row, 0
    breq addition
 
@@ -179,11 +193,12 @@ reject:
    clr temp1
    rjmp convert_end
 
-
-
 //Calculator ops
    
 addition:
+
+    ldi XL, low(inputBCD)
+	ldi XH, high(inputBCD)
 
 	cpi countDigit, 3
 	breq addition3
@@ -196,23 +211,101 @@ addition:
 
 addition3:
 
-	pop temp1
+	ld temp1, X+
 	ldi temp2, 100
 	mul temp1, temp2
 	add ourNumber, r0
 
 addition2:
 	
-	pop temp1
+	ld temp1, X+
 	ldi temp2, 10
 	mul temp1, temp2
 	add ourNumber, r0
 
 addition1:
 
-	pop temp1
-	add ourNumber, r0
-	add ourNumber, accum
+	ld temp1, X+
+	add ourNumber, temp1
+	add accum, ourNumber
+
+    do_lcd_command 0b10000000  
+    do_lcd_command 0b00000001 ; clear display
+	
+printValue:
+
+    clr temp2
+    clr temp3
+	mov temp1, accum
+
+countHundreds:
+
+	cpi temp1, 100
+	brlt printHundreds
+	brvs printHundreds
+
+    subi temp1, 100
+	inc temp2
+	rjmp countHundreds
+
+printHundreds:
+    
+    cpi temp2, 0
+	breq countTens
+
+	ldi r16, ASCII_OFFSET
+	add r16, temp2
+	
+	rcall lcd_data
+	rcall lcd_wait
+
+	mov temp3, temp2
+    clr temp2    
+    
+countTens:
+	
+    cpi temp1,10
+	brlt printTens
+
+    subi temp1, 10
+	inc temp2
+	rjmp countTens
+
+printTens:
+    
+    tst temp3
+    //NEED AN AND CONDITION HERE
+	cpi temp2, 0
+	breq printOnes
+
+	ldi r16, ASCII_OFFSET
+	add r16, temp2
+	
+	rcall lcd_data
+	rcall lcd_wait
+    clr temp2
+
+printOnes:
+
+    //Only thing left should be the ones place
+    ldi r16, ASCII_OFFSET
+	//debug
+	//ldi temp1, 9
+    add r16, temp1
+    rcall lcd_data 
+    rcall lcd_wait
+
+//Return cursor and reset
+
+	do_lcd_command 0b11000000
+    //do_lcd_command 0b00000001 ; clear display	
+	clr countDigit
+	clr ourNumber
+    ldi XL, low(inputBCD)
+	ldi XH, high(inputBCD) 
+
+	ldi readFlag, 1
+
 
 	rjmp main
 
