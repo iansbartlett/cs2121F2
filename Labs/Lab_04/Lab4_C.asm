@@ -250,8 +250,8 @@ countHundreds:
 
 printHundreds:
     
-    cpi temp2, 0
-	breq countTens
+    //cpi temp2, 0
+	//breq countTens
 
 	ldi r16, ASCII_OFFSET
 	add r16, temp2
@@ -273,10 +273,10 @@ countTens:
 
 printTens:
     
-    tst temp3
+    //tst temp3
     //NEED AN AND CONDITION HERE
-	cpi temp2, 0
-	breq printOnes
+	//cpi temp2, 0
+	//breq printOnes
 
 	ldi r16, ASCII_OFFSET
 	add r16, temp2
