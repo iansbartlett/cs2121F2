@@ -1,0 +1,82 @@
+1. State Requirements
+
+1.1 The system shall have a Start Screen mode.
+1.1.1 In the Start Screen mode, the system shall display "2121 16s1 \nSafe Cracker" on the LCD screen.
+1.1.2 Upon a PB0 press, the system shall shift to Start Countdown mode.
+
+1.2 The system shall have a Start Countdown mode.
+1.2.1 In the Start Countdown mode, the system should count in seconds down from 3 s.
+1.2.2 In the Start Countdown mode, the system shall display the following text on the LCD screen: "2121 16s1\nStarting in ?...", where ? is the number of seconds remaining. 
+1.2.3 Upon the timer reaching 0 s, the system shall shift to Reset POT mode.
+
+1.3 The system shall have a Reset POT mode.
+
+1.3.2 The system shall display the following text on the LCD screen: "Reset POT to 0\n Remaining: ?", where n is the number of seconds remaining.
+1.3.3 Upon the POT reaching 0, the system shall shift to the Find POT Pos mode.
+1.3.4 Upon the countdown reaching 0 s, the system shall shift to Timeout mode.
+
+1.4 The system shall have a Find POT Pos mode.
+1.4.1 The system shall count down in seconds from the final counter value of the Reset POT mode.
+1.4.2 The system shall display the following text on the LCD screen: "Find POT Ps\nRemaining: ?", where ? is the number of seconds remaining.
+1.4.3 The system shall read the analog potentiometer voltage as a value between 0x000 and 0x3FF. 
+1.4.4 The system shall compare the analog potentiometer voltage to POT_RAND.
+1.4.4.1 When the difference is less than 48 raw ADC counts, the bottom 8 LEDs shall be lit. 
+1.4.4.2 When the difference is less than 32 raw ADC counts, the 9th LED shall be lit.
+1.4.4.3 When the difference is less than 16 raw ADC counts, the 10th LED shall be lit.
+
+1.4.5 Upon the potentiometer voltage remaining within 16 ADC counts of POT_RAND for 1 s, the system shall transition to Find Code mode.
+1.4.6 Upon the countdown reaching 0 s, the system shall shift to Timeout mode.
+
+1.5 The system shall have a Find Code mode.
+1.5.1 The system shall display the following text on the LCD screen: "Position found!\n Scan for number".
+1.5.2 The system shall read button presses on the keypad.
+1.5.3 The system shall compare button presses to BUTTON_RAND.
+1.5.4 The system shall control the speed of the motor.
+1.5.4.1 When no button is pressed, the motor shall be stationary.
+1.5.4.2 When the button pressed is not the same as BUTTON_RAND, the motor shall be stationary.
+1.5.4.3 When the button pressed is the same as BUTTON_RAND, the motor shall rotate at maximum speed.
+1.5.5 The system shall store the value of BUTTON_RAND.
+1.5.5.1 The stored value of BUTTON_RAND shall be associated with the current round number, COUNT_ROUNDS.
+1.5.6 When the button pressed is the same as BUTTON_RAND for 1 second, the system shall increment COUNT_ROUNDS, and update its state.
+1.5.6.1 If three rounds have elapsed, the system shall shift to Enter Code mode.
+1.5.6.2 If three rounds have not elapsed, the system shall shift to Reset POT mode.
+
+
+1.6 The system shall have an Enter Code mode.
+1.6.1 The system shall display the following text on the top line of the LCD screen: "Enter Code".
+1.6.2 The system shall read button presses on the keypad.
+1.6.3 The system shall compare the first button presses to the values of BUTTON_RAND, in order of rounds played.
+1.6.4 If the ith button pressed corresponds to the value of BUTTON_RAND used in the ith round of Find Code mode, a "*" shall be added to the text displayed on the bottom row of the LCD.
+1.6.5 If the ith button pressed does not correspond to the value of BUTTON_RAND used in the ith round of Find Code mode, the output of the second row of the LCD shall be cleared BUTTON_RAND used in the ith round of Find Code mode, the output of the second row of the LCD shall be cleared, and the system shall return to checking for the first button. 
+1.6.5 Upon detecting the correct three pushbutton sequences, the system shall shift to Game Complete mode.
+
+1.7 The system shall have a Game Complete mode.
+1.7.1 The system shall display the following text on the LCD screen: "Game complete\n You Win!".
+1.7.2 The system shall flash the Strobe LED at a rate of 2 kHz.
+1.7.3 The system shall detect PB0 or PB1 pushbutton presses.
+1.7.4 The system shall detect keypad button presses.
+1.7.5 Upon a pushbutton or keypad button detection, the system shall shift to Start Screen mode.
+
+1.8 The system shall have a Timeout mode.
+1.8.1 The system shall display the following text on the LCD screen: "Game over\n You Lose!".
+1.8.2 The system shall detect PB0 or PB1 pushbutton presses.
+1.8.3 The system shall detect keypad button presses.
+1.8.4 Upon a pushbutton or keypad button detection, the system shall shift to Start Screen mode.
+
+
+2. Functional Requirements
+
+2.1 Internal Functions
+2.1.1 The system shall have the ability to count down in 1s intervals.
+2.1.2 The system shall 
+2.1.3 The system shall have the ability to generate a random number between 0x000 and 0x3FF
+2.1.3 
+
+2.2 Input/Output
+2.2.1 The system shall detect PB0 presses.
+2.2.1.1 The system shall detect a single press per button press.
+2.2.2 The system shall detect the output voltage of the potentiometer.
+2.2.3 The system shall detect presses of single buttons on the keypad.
+
+2.3 Data Storage
+2.3.1 The system shall store a COUNTDOWN variable...
