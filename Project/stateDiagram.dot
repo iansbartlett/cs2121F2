@@ -1,0 +1,24 @@
+digraph G {
+    node [shape = "circle", penwidth = 2.0];
+    "Start Screen"->"Start Countdown" [label = "PB0 Press", penwidth = 1.8]
+    "Start Countdown" -> "Reset POT" [label = "3 s timeout", penwidth = 1.5]
+    "Reset POT" -> "Find POT Pos" [label = "POT = 0", penwidth = 1.5]
+    "Find POT Pos" -> "Find Code"  [label = "POT position correct", penwidth = 1.5]  
+    "Find Code" -> "Reset POT"  [label = "< 3 rounds played", penwidth = 1.5] 
+     
+    "Reset POT" -> "Timeout" [label = "COUNTDOWN timeout", penwidth = 1.5] 
+    "Find POT Pos" -> "Timeout" [label = "COUNTDOWN timeout", penwidth = 1.5]
+    "Find Code" -> "Enter Code" [label = "3 rounds played", penwidth = 1.5]
+
+    "Enter Code" -> "Game Complete" [label = "Code Entered", penwidth = 1.5]
+    "Game Complete" -> "Start Screen" [label = "PB0 || PB1 || keypad pressed", penwidth = 1.5]
+    "Timeout" -> "Start Screen"  [label = "PB0 || PB1 || keypad pressed", penwidth = 1.5]
+
+    //PB0 Reset paths  - comment out for a less confusing graph
+   "Start Countdown" -> "Start Screen" [label = "PB0 Press", penwidth = 1.8]
+   "Reset POT" -> "Start Screen" [label = "PB0 Press", penwidth = 1.8]
+    "Find POT Pos" -> "Start Screen" [label = "PB0 Press", penwidth = 1.8]
+    "Find Code" -> "Start Screen" [label = "PB0 Press", penwidth = 1.8]  
+     "Enter Code" -> "Start Screen" [label = "PB0 Press", penwidth = 1.8]
+
+    }
