@@ -51,7 +51,6 @@
 .def cmask = r26
 .def readFlag = r27
 
-
 //Change later if we get a chance!
 .def PB1Count = r28
 .def PB0Count = r29
@@ -118,6 +117,7 @@ RESET:
     out DDRB, r16
 	out DDRG, r16
 	out DDRE, r16
+    sts DDRH, r16
 
 	clr r16
 	out PORTF, r16
@@ -177,6 +177,8 @@ RESET:
     //Initialize difficulty levels
     ldi r16, 40
 	mov r5, r16
+
+	clr r21
 
 	//Initialize r3
 	clr r16
@@ -240,7 +242,6 @@ rjmp main
 
 init_start_screen:
 
-
 	do_lcd_command 0b00000001 
 	 
     do_lcd_data '2'
@@ -275,6 +276,15 @@ init_start_screen:
     ldi r16, START_SCREEN_MODE
 	mov r6, r16
 
+    ldi r16, 1
+	out PORTC, r16
+
+	ldi r16, 20
+	mov r5, r16
+
+    ldi ZL, low(final_code)
+	ldi ZH, high(final_code)
+
 ret
 
 
@@ -284,9 +294,54 @@ ret
 //Returns: writes to COUNTDOWN, sets mode to START_COUNTDOWN_MODE
 //Incorperates dimming
 start_screen:
+    rcall keypad_sweep
+
+    cpi readFlag, 0
+	breq sameDifficulty	
+
+	cpi r16, 0xA
+	brne checkB
+	    ldi readFlag, 2
+        ldi r16, 20
+		mov r5, r16
+		ldi r16, 1
+		out PORTC, r16
+
+	checkB:
+	cpi r16, 0xB
+	brne checkC
 	
-	//Set up for next mode
-  
+	    ldi readFlag, 2
+        ldi r16, 15
+		mov r5, r16
+
+		ldi r16, 3
+		out PORTC, r16
+
+    checkC:
+    cpi r16, 0xC
+	brne checkD
+
+	    ldi readFlag, 2
+        ldi r16, 10
+		mov r5, r16
+
+		ldi r16, 7
+		out PORTC, r16
+	
+	checkD:
+	cpi r16, 0xD
+	brne sameDifficulty
+		ldi readFlag, 2
+        ldi r16, 6
+		mov r5, r16
+
+		ldi r16, 15
+		out PORTC, r16
+
+    sameDifficulty:
+	//Set up for next mode  
+
 	mov r16, r3
 	andi r16, PB1_ACTIVE
 	cpi r16, PB1_ACTIVE
@@ -337,6 +392,9 @@ init_start_countdown:
 	do_lcd_data '.'
 	do_lcd_data '.'
 	do_lcd_data ' '
+
+    //Reset rounds played
+	clr r21
  
     mov r20, r10
 	rcall displayNumber
@@ -423,9 +481,6 @@ init_reset_pot:
 //Arguments: none
 //Returns: sets mode to FIND_POT_MODE if successful, TIMEOUT_MODE if not.
 reset_POT:
-
-    //out PORTC, r12 
-
     clr r16
 	cp r13, r16
 	cp r12, r16
@@ -522,8 +577,6 @@ find_POT:
 
     adiw XL, 48
 
-    //out PORTC, r15
-
     cp r14, XL
     cpc r15, XH
 	brcc pot_not_found
@@ -618,8 +671,11 @@ init_find_code:
 	do_lcd_data 'e'
 	do_lcd_data 'r'
 
-    //VERY temporary- debug only!
-	do_lcd_command 0b00000001 
+    //Initialize value
+	//Fixed for now
+	ldi r19, 3
+
+    st Z+, r19
 
     ldi r16, FIND_CODE_MODE
 	mov r6, r16
@@ -637,35 +693,81 @@ find_code:
    rcall keypad_sweep
 
    cpi readFlag, 0
-   breq return_from_find_code
+   breq not_pressed
 
    cpi readFlag, 2
-   breq return_from_find_code
-
+   breq check_right_number
+   ldi r16, 1
+   mov r10, r16
    ldi readFlag, 2
-
-  //   cp r16, r19
-  // breq right_number
+   
    rjmp return_from_find_code
 
-right_number:
-   //turn on motor
-   //if held for less than 1 sec 
-   rjmp return_from_find_code
-   //if held for more than 1 sec
+check_right_number:
 
-	inc r21
-	cpi r21, 3
-	brlo next_round
+   cp r16, r19
+   brne not_pressed
 
-    inc r25
-	rjmp return_from_find_code
+   in r16, PORTG
+   ori r16, 0b00000001
+   out PORTG, r16
+
+   mov r16, r4
+   ori r16, 0b00000001
+   mov r4, r16 
+   
+   ldi r16, 0
+   cp r10, r16
+   brge return_from_find_code
+
+   inc r21
+   
+   out PORTC, r21
+
+   cpi r21, 3
+   brlo next_round
+
+   rcall init_enter_code
+   rjmp not_pressed
 
 next_round:
+
+    mov r10, r5
 	rcall init_reset_POT
+
+not_pressed:
+
+    in r16, PORTG
+	andi r16, 0b11111110
+	out PORTG, r16
 
 return_from_find_code:
     ret
+
+init_enter_code:
+   do_lcd_command 0b00000001 
+
+   do_lcd_data 'E'
+   do_lcd_data 'n'
+   do_lcd_data 't'
+   do_lcd_data 'e'
+   do_lcd_data 'r'
+   do_lcd_data ' '
+   do_lcd_data 'C'
+   do_lcd_data 'o'
+   do_lcd_data 'd'
+   do_lcd_data 'e'
+ 
+   do_lcd_command 0b11000000
+
+   ldi r16, ENTER_CODE_MODE
+   mov r6, r16
+   
+   ldi ZL, low(final_code)
+   ldi ZH, high(final_code)
+
+
+ret
 
 //Enter code - mode 5
 //Accepts keypad inputv and compares with stored values
@@ -673,8 +775,66 @@ return_from_find_code:
 //Arguments: final_code
 //Returns: sets mode to GAME_COMPLETE_MODE
 enter_code:
+
+   rcall keypad_sweep
+
+   ld r19, Z+
+
+   out PORTC, r19
+
+   cpi readFlag, 0
+   breq enter_code_idle
+
+   cpi readFlag, 2
+   breq enter_code_idle
+   ldi readFlag, 2
+
+   cp r16, r19
+   breq correct_key
+       rcall init_enter_code
+       rjmp enter_code_idle
+    
+    correct_key:
+	dec r21
+    do_lcd_data '*'
+    cpi r21, 0
+	breq init_game_complete
+
+    enter_code_idle:
     ret
 
+init_game_complete:
+   ldi r16, GAME_COMPLETE_MODE
+   mov r6, r16
+
+    do_lcd_command 0b00000001 
+
+    do_lcd_data 'G'
+	do_lcd_data 'a'
+	do_lcd_data 'm'
+	do_lcd_data 'e'
+	do_lcd_data ' '
+	do_lcd_data 'C'
+	do_lcd_data 'o'
+	do_lcd_data 'm'
+	do_lcd_data 'p'
+	do_lcd_data 'l'
+	do_lcd_data 'e'
+	do_lcd_data 't'
+	do_lcd_data 'e'
+
+	do_lcd_command 0b11000000
+
+    do_lcd_data 'Y'
+	do_lcd_data 'o'
+	do_lcd_data 'u'
+	do_lcd_data ' '
+	do_lcd_data 'W'
+	do_lcd_data 'i'
+	do_lcd_data 'n'
+	do_lcd_data '!'
+
+   ret
 //Game complete - mode 6
 //Displays "You win!" message
 //Arguments: none
@@ -993,6 +1153,8 @@ reti
 //Displays the value of the r20 register by converting to BCD and outputting digits
 //Does not move cursor
 displayNumber:
+push r21
+
 
 cpi r20, 100
 brlo checkTensPlace
@@ -1058,6 +1220,8 @@ printOnes:
     rcall lcd_data 
     rcall lcd_wait
 
+
+    pop r21
     ret
 
 //Random number generation
@@ -1152,6 +1316,7 @@ sleep_5ms:
 keypad_sweep:
 
  push r17
+ push r21
 
  ldi cmask, INITCOLMASK
    clr col
@@ -1285,10 +1450,9 @@ convert_end:
 
 return_keypad_sweep:
 
+   pop r21
    pop r17
    ret
-
-//Speaker function
 
 //Refresh LCD
 
