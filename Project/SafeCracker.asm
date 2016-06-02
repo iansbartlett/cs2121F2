@@ -4,6 +4,7 @@
 
 //Register usage guidelines
 //**************************
+//r3: System state flags
 //r5: countdown length for difficulty level
 //r6: system mode
 //r16: LCD/I/O loading/general temp register
@@ -12,6 +13,7 @@
 //r19: Temporary storage for keypad number
 //r21: Rounds played
 //r10: Seconds remaining in countdown
+//r9: backlight level
 //**************************
 
 .include "m2560def.inc"
@@ -27,6 +29,19 @@
 
 #define ASCII_OFFSET 48
 
+#define AUDIO_BIT_MASK 0b00000001
+
+#define PB0_ACTIVE 0b00100000
+#define PB1_ACTIVE 0b00010000
+
+#define ACCEPT_CUTOFF_0 15
+#define ACCEPT_CUTOFF_1 50
+#define REJECT_CUTOFF_0 0
+#define REJECT_CUTOFF_1 0
+
+#define PB0_pin 0b00000001
+#define PB1_pin 0b00000010
+
 //Keypad things
 //*********************
 
@@ -35,6 +50,11 @@
 .def rmask = r24
 .def cmask = r26
 .def readFlag = r27
+
+
+//Change later if we get a chance!
+.def PB1Count = r28
+.def PB0Count = r29
 
 .equ PORTADIR = 0xF0
 .equ INITCOLMASK = 0xEF
@@ -70,7 +90,8 @@
    final_code: .byte 3
    TempCounter: .byte 2
    TempCounterHalf: .byte 2
-  
+   TempCounterQuarter: .byte 2
+   TempCounterAudio: .byte 2  
 .cseg
 
 .org 0x0000
@@ -95,6 +116,8 @@ RESET:
 	out DDRA, r16
     out DDRC, r16
     out DDRB, r16
+	out DDRG, r16
+	out DDRE, r16
 
 	clr r16
 	out PORTF, r16
@@ -128,13 +151,38 @@ RESET:
 	do_lcd_command 0b00000110 ; increment, no display shift
 	do_lcd_command 0b00001100 ; Cursor on, bar, no blink
 
+    //Initialize backlight PWM
+
+    ldi r16, 0xFF
+	mov r9, r16
+
+    sts OCR3BL, r9
+	clr r16
+	sts OCR3BH, r16
+	//Use Fast PWM on Port E pin 3
+	ldi r16, (1 << CS30)
+	sts TCCR3B, r16
+	ldi r16, (1 << WGM30)|(1 << WGM32 )|(1<<COM3B1)
+	sts TCCR3A, r16
+
+    ldi r16, (2 << ISC10)
+	ori r16, (2 << ISC00)
+	sts EICRA, r16
+
+	in r16, EIMSK
+	ori r16, (1<<INT0)
+	ori r16, (1<<INT1)
+	out EIMSK, r16
+
     //Initialize difficulty levels
     ldi r16, 40
 	mov r5, r16
 
-    //Initialize mode
-	ldi r16, START_SCREEN_MODE
-	mov r6, r16
+	//Initialize r3
+	clr r16
+	mov r3, r16
+
+    rcall init_start_screen
 
 main:
 
@@ -158,14 +206,77 @@ main:
 	check_find_pot:
 	ldi r16, FIND_POT_MODE
 	cp r6, r16
-	brne no_mode
+	brne check_find_code
 	    rcall find_POT
 
-	no_mode:
+    check_find_code:
+	ldi r16, FIND_CODE_MODE
+	cp r6, r16
+	brne check_enter_code
+	    rcall find_code
 
+    check_enter_code:
+	ldi r16, ENTER_CODE_MODE
+	cp r6, r16
+	brne check_game_complete
+	    rcall enter_code
+
+    check_game_complete:
+    ldi r16, GAME_COMPLETE_MODE
+	cp r6, r16
+	brne check_timeout
+	    rcall game_complete
+
+    check_timeout:
+	ldi r16, TIMEOUT_MODE
+	cp r6, r16
+	brne repeat
+	    rcall timeout
+	
+	repeat:
 rjmp main
 
 //Mode functions
+
+init_start_screen:
+
+
+	do_lcd_command 0b00000001 
+	 
+    do_lcd_data '2'
+	do_lcd_data '1'
+	do_lcd_data '2'
+	do_lcd_data '1'
+
+	do_lcd_data ' '
+
+	do_lcd_data '1'
+	do_lcd_data '6'
+	do_lcd_data 's'
+	do_lcd_data '1'
+
+	do_lcd_command 0b11000000
+
+	do_lcd_data 'S'
+	do_lcd_data 'a'
+	do_lcd_data 'f'
+	do_lcd_data 'e'
+
+	do_lcd_data ' '
+
+	do_lcd_data 'C'
+	do_lcd_data 'r'
+	do_lcd_data 'a'
+	do_lcd_data 'c'
+	do_lcd_data 'k'
+	do_lcd_data 'e'
+	do_lcd_data 'r'
+
+    ldi r16, START_SCREEN_MODE
+	mov r6, r16
+
+ret
+
 
 //Start screen - mode 0
 //Displays welcome message
@@ -175,8 +286,17 @@ rjmp main
 start_screen:
 	
 	//Set up for next mode
-    
-    rcall init_start_countdown
+  
+	mov r16, r3
+	andi r16, PB1_ACTIVE
+	cpi r16, PB1_ACTIVE
+	brne continue_start_screen
+        
+		andi r16, 0b11101111
+		mov r3, r16
+        rcall init_start_countdown
+	
+	continue_start_screen:
 	ret
 
 //Initialize Start Countdown Mode
@@ -288,8 +408,6 @@ init_reset_pot:
 	do_lcd_data 'g'
 	do_lcd_data ':'
 	do_lcd_data ' '
- 
-    
 
     mov r20, r10
 	rcall displayNumber
@@ -298,7 +416,6 @@ init_reset_pot:
     mov r6, r16
 
     ret
-
 
 //Reset potentiometer - mode 2
 //Compares pot value to 0
@@ -360,10 +477,14 @@ init_find_POT:
 
     //**********TEST INITIALIZATION**********
 	//Replace with randomizer code
-	ldi r16, 0x01
+	//ldi r16, 0x01
+	//mov r15, r16
+	lds r16, TCNT3H
+	andi r16, 0b00000011 //Truncate to ensure less than 0x3FF
 	mov r15, r16
-	ldi r16, 0xE2
-	mov r14, r16
+	//ldi r16, 0xE2
+	//mov r14, r16
+	lds r14, TCNT3L
     //*****************************
 
     ldi r16, FIND_POT_MODE
@@ -379,10 +500,14 @@ init_find_POT:
 //Arguments: none
 //Returns: sets mode to FIND_CODE_MODE if successful, TIMEOUT_MODE if not
 find_POT:  
-    
+    push XL
+	push XH    
+
     clr r16
 	out PORTC, r16
-	out PORTB, r16
+	//in  r16, PORTG
+	//andi r16, 0b11111100
+	out PORTG, r16
 
     cp r14, r12
     cpc r15, r13
@@ -390,51 +515,70 @@ find_POT:
         rcall init_reset_pot
 		rjmp continueFind
    
-    pot_not_overshot:
-    cp r15, r13
-	brne pot_not_found
+    pot_not_overshot: 
 
-	ser r16
- 	out PORTC, r16
+    mov XL, r12
+	mov XH, r13
 
-    //Final steps of LED logic not working
+    adiw XL, 48
 
-    mov r16, r17
-    sub r16, r12
-	cpi r16, 32 
-	brpl pot_not_found
+    //out PORTC, r15
 
-    in r16, PORTB
-	ori r16, 0b00000100
-	out PORTB, r16
+    cp r14, XL
+    cpc r15, XH
+	brcc pot_not_found
+
+       ser r16
+       out PORTC, r16
+	
+	sbiw XL, 16
+
+    cp r14, XL
+    cpc r15, XH
+	brcc pot_not_found
+
+    in r16, PORTG
+	ldi r16, 0b00000100
+	out PORTG, r16
     
-    mov r16, r17
-    sub r16, r12
-	cpi r16, 16 
-	brpl pot_not_found
+	sbiw XL, 16
 
-	cpi r17, 16
-	in r16, PORTB
-	ori r16, 0b00001000
-	out PORTB, r16
+    cp r14, XL
+    cpc r15, XH
+	brcc pot_not_found
+ 
+   	in r16, PORTG
+	ldi r16, 0b00000010
+	out PORTG, r16
+
+    //Need a 1s wait time here. Right now responds instantly.
+	rcall init_find_code
 
     pot_not_found:   
     clr r16
     cp r10, r16
 	brge continueFind
+	    clr r16
+		out PORTC, r16
+		out PORTG, r16
         rcall init_timeout     
 	
 	continueFind:    
-    ret
+    
+	pop XH
+	pop XL
+	
+	ret
 
-//Find code - mode 4
-//Generates a random keypad key
-//Compares keypad input to random key
-//Spins motor if correct key pressed
-//Arguments: none
-//Returns: sets mode to ENTER_CODE_MODE, stores random key in final_code
-find_code:
-    do_lcd_data 'P'
+init_find_code:
+    
+    clr r16
+	out PORTC, r16
+	out PORTG, r16
+
+	do_lcd_command 0b00000001 
+	
+	do_lcd_data 'P'
 	do_lcd_data 'o'
 	do_lcd_data 's'
 	do_lcd_data 'i'
@@ -472,52 +616,36 @@ find_code:
 	do_lcd_data 'm'
 	do_lcd_data 'b'
 	do_lcd_data 'e'
-	do_lcd_data 'r'	    
+	do_lcd_data 'r'
 
-    rcall keypad_sweep
+    //VERY temporary- debug only!
+	do_lcd_command 0b00000001 
 
-	push r16
-    clr r16
+    ldi r16, FIND_CODE_MODE
+	mov r6, r16
 
-    cpi col, 3
-    breq reject
-   
-    cpi row, 3
-    breq symbols
-   
-    inc r16
-    mov r17, row
-    lsl r17
-    add r17, row
-    add r17, col
-    inc r17
-  
-    push r17
-    jmp convert_end
+    ret
 
-symbols: 
-   cpi col, 1
-   breq zero
-   jmp reject
+//Find code - mode 4
+//Generates a random keypad key
+//Compares keypad input to random key
+//Spins motor if correct key pressed
+//Arguments: none
+//Returns: sets mode to ENTER_CODE_MODE, stores random key in final_code
+find_code:	    
 
-resetReadFlag:
-   clr readFlag
-   rjmp return_from_find_code
+   rcall keypad_sweep
 
-zero:
-   clr r16
-   jmp convert_end
+   cpi readFlag, 0
+   breq return_from_find_code
 
-reject:
-   clr r16
-   rjmp return_from_find_code
+   cpi readFlag, 2
+   breq return_from_find_code
 
-convert_end:
-   ldi r22, ASCII_OFFSET
-   add r16, r22
+   ldi readFlag, 2
 
-   cp r16, r19
-   breq right_number
+  //   cp r16, r19
+  // breq right_number
    rjmp return_from_find_code
 
 right_number:
@@ -540,7 +668,7 @@ return_from_find_code:
     ret
 
 //Enter code - mode 5
-//Accepts keypad input and compares with stored values
+//Accepts keypad inputv and compares with stored values
 //Displays a "*" when correct key pressed, otherwise resets
 //Arguments: final_code
 //Returns: sets mode to GAME_COMPLETE_MODE
@@ -561,14 +689,27 @@ init_timeout:
 	mov r6, r16
   
     do_lcd_command 0b00000001 
-   
-    do_lcd_data 'T'
-	do_lcd_data 'i'
+	do_lcd_data 'G'
+	do_lcd_data 'a'
 	do_lcd_data 'm'
 	do_lcd_data 'e'
+	do_lcd_data ' '
+	do_lcd_data 'o'
+	do_lcd_data 'v'
+	do_lcd_data 'e'
+	do_lcd_data 'r'
+    
+	do_lcd_command 0b11000000
+
+    do_lcd_data 'Y'
 	do_lcd_data 'o'
 	do_lcd_data 'u'
-	do_lcd_data 't' 
+	do_lcd_data ' '
+	do_lcd_data 'l'
+	do_lcd_data 'o'
+	do_lcd_data 's'
+	do_lcd_data 'e'
+	do_lcd_data '!'
 
     ret
 
@@ -579,18 +720,98 @@ init_timeout:
 //Incorperates dimming
 
 timeout:
-    
+
+	mov r16, r3
+	andi r16, PB1_ACTIVE
+	cpi r16, PB1_ACTIVE
+	brne continue_timeout
+
+        andi r16, 0b11101111
+		mov r3, r16
+        rcall init_start_screen
+	
+	continue_timeout:	
+	mov r16, r3
+	andi r16, PB0_ACTIVE
+	cpi r16, PB0_ACTIVE
+	brne continue_timeout_2
+
+        andi r16, 0b11011111
+		mov r3, r16
+      //  rcall init_start_screen
+	
+    continue_timeout_2:
     ret
 
 //Interrupt functions
 
 //PB0
 PB0_Interrupt:
+   mov r16, r3
+   ori r16, 0b10000000
+   mov r3, r16
    reti
 
 //PB1
 PB1_Interrupt:
+   
+   mov r16, r3
+   ori r16, 0b01000000   
+   mov r3, r16  
+
    reti
+
+//PB1 Debounce
+
+debouncePB1:
+   push r16
+
+   in r16, PORTD
+   andi r16, PB1_pin
+   cpi r16, PB1_pin
+   breq increasePB1Count
+   dec PB1Count
+   rjmp checkPB1Value
+
+increasePB1Count:
+   inc PB1Count
+
+checkPB1Value:
+   rjmp storePB1
+
+   cpi PB1Count, ACCEPT_CUTOFF_1
+   breq storePB1
+
+   cpi PB1Count, REJECT_CUTOFF_1
+   breq rejectButton
+   
+   rjmp exitDebouncePB1
+
+storePB1:
+   
+   mov r16, r3
+   andi r16, 0b00111111
+   mov r3, r16
+   ldi PB1Count, 10
+
+   mov r16, r3
+   ori r16, PB1_ACTIVE  
+   mov r3, r16   
+
+   rjmp exitDebouncePB1
+
+rejectButton:
+   mov r16, r3
+   andi r16, 0b00111111
+   mov r3, r16
+
+   ldi PB0Count, 10
+   ldi PB1Count, 10
+   rjmp exitDebouncePB1
+
+exitDebouncePB1:
+   pop r16
+ret
 
 ADC_Interrupt:
    push r16
@@ -616,10 +837,90 @@ mainClockInterrupt:
    push r16
    in r16, SREG
    push r16
+   push r17
    push YH
    push YL
    push r25
    push r24
+
+// 523 Hz timer to generate audio tone
+audioFrequencyRoutine:
+
+   lds r24, TempCounterAudio
+   lds r25, TempCounterAudio+1
+   adiw r25:r24, 1
+   cpi r24, low(7)
+   ldi r16, high(7)
+   cpc r25, r16
+   brne NotAudioPeriod
+
+   //Stuff to do on the half second
+   mov r16, r3
+   andi r16, AUDIO_BIT_MASK
+   cpi 	r16, AUDIO_BIT_MASK
+   brne noAudio 
+
+   in r16, PORTB
+   ldi r17, 0b00000001
+   eor r16, r17
+   out PORTB, r16
+
+   noAudio:
+
+   checkPB0:
+   mov r16, r3
+   andi r16, 0b10000000
+   cpi r16, 0b10000000
+   brne checkPB1
+       //rcall debouncePB0
+
+   checkPB1:
+   mov r16, r3
+   andi r16, 0b01000000
+   cpi r16, 0b01000000
+   brne exitAudioTimerRoutine
+         
+       rcall debouncePB1
+
+   exitAudioTimerRoutine:
+   clear TempCounterAudio
+   rjmp quarterSecondRoutine
+   
+NotAudioPeriod:
+   sts TempCounterAudio, r24
+   sts TempCounterAudio+1, r25
+
+quarterSecondRoutine:
+
+   lds r24, TempCounterQuarter
+   lds r25, TempCounterQuarter+1
+   adiw r25:r24, 1
+   cpi r24, low(1703)
+   ldi r16, high(1703)
+   cpc r25, r16
+   brne NotQuarterSecond
+
+   //Stuff to do on the quarter second
+   //Shut off the audio flag
+   mov r16, r3
+   //Magic number: compliment of AUDIO_BIT_MASK
+   andi r16, 0b11111110
+   mov r3, r16   
+
+   //May want to increase ADC sampling frequency
+   ldi r16, (3 << REFS0) | (0 << ADLAR) | (0 << MUX0)
+   sts ADMUX, r16
+   ldi r16, (1 << MUX5)
+   sts ADCSRB, r16
+   ldi r16, (1 << ADEN) | (1 << ADSC) | (1 << ADIE) | (5 << ADPS0)
+   sts ADCSRA, r16
+
+   clear TempCounterQuarter
+   rjmp halfSecondRoutine
+   
+NotQuarterSecond:
+   sts TempCounterQuarter, r24
+   sts TempCounterQuarter+1, r25
 
 //500 ms routine
 
@@ -635,13 +936,6 @@ halfSecondRoutine:
 
    //Stuff to do on the half second
    rcall refreshLCD
-
-   ldi r16, (3 << REFS0) | (0 << ADLAR) | (0 << MUX0)
-   sts ADMUX, r16
-   ldi r16, (1 << MUX5)
-   sts ADCSRB, r16
-   ldi r16, (1 << ADEN) | (1 << ADSC) | (1 << ADIE) | (5 << ADPS0)
-   sts ADCSRA, r16
 
    clear TempCounterHalf
    rjmp secondRoutine
@@ -661,7 +955,16 @@ secondRoutine:
    brne NotSecond
 
    //Stuff to do on the second
+   //Count down on the timer
    dec r10
+
+   //Begin the beep if mode is correct
+ 
+   //TODO: MODE CHECK
+
+   mov r16, r3
+   ori r16, AUDIO_BIT_MASK
+   mov r3, r16
    
    clear TempCounter
    rjmp EndIF
@@ -678,6 +981,7 @@ EndIF:
    pop r25
    pop YL
    pop YH
+   pop r17
    pop r16
    out SREG, r16
    pop r16
@@ -719,8 +1023,7 @@ printHundreds:
 
 checkTensPlace:
 cpi r20, 10
-brlo printOnes
-    
+brlo printOnes    
 
 countTens:
 
@@ -756,7 +1059,6 @@ printOnes:
     rcall lcd_wait
 
     ret
-
 
 //Random number generation
 
@@ -846,30 +1148,27 @@ sleep_5ms:
 
 //Keypad sweep routine
 //Function prologue
-push r17
-push r18
-
-//Body
 
 keypad_sweep:
-   ldi cmask, INITCOLMASK
+
+ push r17
+
+ ldi cmask, INITCOLMASK
    clr col
      
 colloop: 
    cpi  col, 4
-   brne noReadFlagReset
-       rjmp resetReadFlag
-   noReadFlagReset:
+   breq resetReadFlag
    sts PORTL, cmask
 
-   ldi r17, 0xFF
+   ldi r16, 0xFF
 delay: 
-   dec r17
+   dec r16
    brne delay    //wait for the decrement to hit a zero flag
     
-   lds r17, PINL
-   andi r17, ROWMASK 
-   cpi r17, 0xF
+   lds r16, PINL
+   andi r16, ROWMASK 
+   cpi r16, 0xF
    breq nextcol
 
    ldi rmask, INITROWMASK
@@ -878,13 +1177,9 @@ delay:
 rowloop:
    cpi row, 4
    breq nextcol
-   mov r18, r17
-   and r18, rmask
-
-   //I think this should have been convert_end
-   brne continueConvert
-      rjmp convert_end
-   continueConvert:
+   mov r17, r16
+   and r17, rmask
+   breq convert
    inc row
    lsl rmask
    rjmp rowloop
@@ -895,16 +1190,102 @@ nextcol:
    inc col
    rjmp colloop
 
-sweep_end:
-   //temp1 IS r16
-   // hax hax hax
-   cpi readFlag, 1
-   breq keypad_sweep
+convert:
+   cpi col, 3
+   breq letters  
 
-//Epilogue
-   pop r18
+   cpi row, 3
+   breq symbols
+   
+   inc r21
+   mov r16, row
+   lsl r16
+   add r16, row
+   add r16, col
+   inc r16
+   //subi temp1, -'1'
+   jmp convert_end
+   
+symbols: 
+
+   cpi col, 0
+   breq star
+
+   cpi col, 1
+   breq zero
+
+   cpi col, 2
+   breq hash
+
+   jmp reject
+
+resetReadFlag:
+
+   clr readFlag
+   clr r16
+   rjmp return_keypad_sweep
+
+star:
+
+   ldi r16, 0xE
+   jmp convert_end
+
+zero:
+   clr r16
+   jmp convert_end
+
+hash:
+   ldi r16, 0xF
+   jmp convert_end
+
+letters:
+
+   cpi row, 0
+   breq A_key
+
+   cpi row, 1
+   breq B_key
+
+   cpi row, 2
+   breq C_key
+   
+   cpi row, 3
+   breq D_key
+
+   rjmp reject
+
+A_key:
+   ldi r16, 0xA
+   jmp convert_end
+
+B_key:
+   ldi r16, 0xB
+   jmp convert_end
+
+C_key:
+   ldi r16, 0xC
+   jmp convert_end
+
+D_key:
+   ldi r16, 0xD
+   jmp convert_end
+
+reject:
+   clr r16
+   rjmp convert_end
+
+
+convert_end:
+
+   cpi readFlag, 2
+   breq return_keypad_sweep
+
+   ldi readFlag, 1
+   rjmp return_keypad_sweep
+
+return_keypad_sweep:
+
    pop r17
-
    ret
 
 //Speaker function
@@ -912,8 +1293,6 @@ sweep_end:
 //Refresh LCD
 
 refreshLCD:   
-
-    //out PORTC, r10
 
     start_countdown_LCD:
     ldi r16, START_COUNTDOWN_MODE
@@ -945,7 +1324,6 @@ refreshLCD:
 	mov r20, r10
 	rcall displayNumber   
     
-
     find_pot_LCD:
     ldi r16, FIND_POT_MODE
 	cp r6, r16
@@ -965,7 +1343,7 @@ refreshLCD:
     doubleDigit:
     mov r20, r10
 	rcall displayNumber   
-    
+    	
     exit_refresh_LCD:
 
 	ret
