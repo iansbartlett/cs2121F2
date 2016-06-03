@@ -90,7 +90,8 @@
    TempCounter: .byte 2
    TempCounterHalf: .byte 2
    TempCounterQuarter: .byte 2
-   TempCounterAudio: .byte 2  
+   TempCounterAudio: .byte 2
+   TempCounterStrobe: .byte 2  
 .cseg
 
 .org 0x0000
@@ -175,7 +176,7 @@ RESET:
 	out EIMSK, r16
 
     //Initialize difficulty levels
-    ldi r16, 40
+    ldi r16, 20
 	mov r5, r16
 
 	clr r21
@@ -388,6 +389,17 @@ init_start_countdown:
 	do_lcd_data ' '
 	do_lcd_data 'i'
 	do_lcd_data 'n'
+    do_lcd_data ' ' 
+
+    rcall sleep_5ms
+	rcall sleep_5ms
+    rcall sleep_5ms
+    rcall sleep_5ms
+	
+
+    mov r20, r10
+	rcall displayNumber
+
 	do_lcd_data '.'
 	do_lcd_data '.'
 	do_lcd_data '.'
@@ -395,9 +407,7 @@ init_start_countdown:
 
     //Reset rounds played
 	clr r21
- 
-    mov r20, r10
-	rcall displayNumber
+
 
 	ret
     
@@ -413,8 +423,7 @@ start_countdown:
        
          mov r10, r5
 
-	    //Serious hax- PLEASE find a better way to fix timing issues
-		rcall sleep_5ms
+    rcall sleep_5ms
 	    rcall sleep_5ms
 		rcall sleep_5ms
 		rcall sleep_5ms
@@ -467,11 +476,13 @@ init_reset_pot:
 	do_lcd_data ':'
 	do_lcd_data ' '
 
-    mov r20, r10
-	rcall displayNumber
 
     ldi r16, RESET_POT_MODE
     mov r6, r16
+
+    mov r20, r10
+	rcall displayNumber
+
 
     ret
 
@@ -530,17 +541,12 @@ init_find_POT:
     mov r20, r10
 	rcall displayNumber
 
-    //**********TEST INITIALIZATION**********
-	//Replace with randomizer code
-	//ldi r16, 0x01
-	//mov r15, r16
+
 	lds r16, TCNT3H
 	andi r16, 0b00000011 //Truncate to ensure less than 0x3FF
 	mov r15, r16
-	//ldi r16, 0xE2
-	//mov r14, r16
 	lds r14, TCNT3L
-    //*****************************
+
 
     ldi r16, FIND_POT_MODE
     mov r6, r16
@@ -672,10 +678,16 @@ init_find_code:
 	do_lcd_data 'r'
 
     //Initialize value
-	//Fixed for now
-	ldi r19, 3
+	lds r19, TCNT3L
+	andi r19, 0b00001111 
+  
+    ldi ZL, low(final_code)
+    ldi ZH, high(final_code)
 
-    st Z+, r19
+    ldi r16, 0
+    add ZL, r21
+	adc ZH, r16
+    st Z, r19
 
     ldi r16, FIND_CODE_MODE
 	mov r6, r16
@@ -721,8 +733,6 @@ check_right_number:
    brge return_from_find_code
 
    inc r21
-   
-   out PORTC, r21
 
    cpi r21, 3
    brlo next_round
@@ -731,8 +741,9 @@ check_right_number:
    rjmp not_pressed
 
 next_round:
-
+    
     mov r10, r5
+	out PORTC, r10
 	rcall init_reset_POT
 
 not_pressed:
@@ -766,6 +777,7 @@ init_enter_code:
    ldi ZL, low(final_code)
    ldi ZH, high(final_code)
 
+   clr r21
 
 ret
 
@@ -775,12 +787,18 @@ ret
 //Arguments: final_code
 //Returns: sets mode to GAME_COMPLETE_MODE
 enter_code:
+   
+   ldi ZL, low(final_code)
+   ldi ZH, high(final_code)
+
+   ldi r16, 0
+   add ZL, r21
+   adc ZH, r16
+   ld r19, Z
 
    rcall keypad_sweep
 
-   ld r19, Z+
-
-   out PORTC, r19
+   out PORTC, r16
 
    cpi readFlag, 0
    breq enter_code_idle
@@ -795,9 +813,9 @@ enter_code:
        rjmp enter_code_idle
     
     correct_key:
-	dec r21
+	inc r21
     do_lcd_data '*'
-    cpi r21, 0
+    cpi r21, 3
 	breq init_game_complete
 
     enter_code_idle:
@@ -841,13 +859,45 @@ init_game_complete:
 //Returns: sets mode to START_SCREEN_MODE
 //Incorperates dimming
 game_complete:
+
+    rcall keypad_sweep
+
+    cpi readFlag, 1
+	brne check_complete_PBs
+	    clr readFlag
+		rcall init_start_screen
+		rjmp continue_complete_2
+
+    check_complete_PBs:
+	mov r16, r3
+	andi r16, PB1_ACTIVE
+	cpi r16, PB1_ACTIVE
+	brne continue_complete
+
+        andi r16, 0b11101111
+		mov r3, r16
+        rcall init_start_screen
+	
+	continue_complete:	
+	mov r16, r3
+	andi r16, PB0_ACTIVE
+	cpi r16, PB0_ACTIVE
+	brne continue_complete_2
+
+        andi r16, 0b11011111
+		mov r3, r16
+      //  rcall init_start_screen
+	
+    continue_complete_2:
     ret
 
 //Initialize timeout
 init_timeout:
     ldi r16, TIMEOUT_MODE
 	mov r6, r16
-  
+
+	clr readFlag
+
     do_lcd_command 0b00000001 
 	do_lcd_data 'G'
 	do_lcd_data 'a'
@@ -881,6 +931,15 @@ init_timeout:
 
 timeout:
 
+    rcall keypad_sweep
+
+    cpi readFlag, 1
+	brne check_timeout_PBs
+	    clr readFlag
+		rcall init_start_screen
+		rjmp continue_timeout_2
+
+    check_timeout_PBs:
 	mov r16, r3
 	andi r16, PB1_ACTIVE
 	cpi r16, PB1_ACTIVE
@@ -907,6 +966,9 @@ timeout:
 
 //PB0
 PB0_Interrupt:
+   
+   rcall init_start_screen   
+
    mov r16, r3
    ori r16, 0b10000000
    mov r3, r16
@@ -1003,6 +1065,43 @@ mainClockInterrupt:
    push r25
    push r24
 
+//Strobe light
+strobeRoutine:
+
+   lds r24, TempCounterStrobe
+   lds r25, TempCounterStrobe+1
+   adiw r25:r24, 1
+   cpi r24, low(62)
+   ldi r16, high(62)
+   cpc r25, r16
+   brne NotStrobePeriod
+
+   ldi r16, GAME_COMPLETE_MODE
+   cp r6, r16
+   brne strobe_off
+
+   in r16, PORTA
+   ldi r17, 0b00000010
+   eor r16, r17
+   out PORTA, r16
+   rjmp noStrobe
+
+   strobe_off:
+   in r16, PORTA
+   andi r16, 0b11111101
+   out PORTA, r16
+
+   noStrobe:
+   exitStrobeTimerRoutine:
+   clear TempCounterStrobe
+   rjmp audioFrequencyRoutine
+   
+NotStrobePeriod:
+   sts TempCounterStrobe, r24
+   sts TempCounterStrobe+1, r25
+
+
+
 // 523 Hz timer to generate audio tone
 audioFrequencyRoutine:
 
@@ -1014,7 +1113,6 @@ audioFrequencyRoutine:
    cpc r25, r16
    brne NotAudioPeriod
 
-   //Stuff to do on the half second
    mov r16, r3
    andi r16, AUDIO_BIT_MASK
    cpi 	r16, AUDIO_BIT_MASK
@@ -1155,6 +1253,7 @@ reti
 displayNumber:
 push r21
 
+clr r21
 
 cpi r20, 100
 brlo checkTensPlace
@@ -1466,8 +1565,17 @@ refreshLCD:
 
     update_start_countdown_LCD:
     do_lcd_command 0b00010000
+	do_lcd_command 0b00010000
+	do_lcd_command 0b00010000
+	do_lcd_command 0b00010000
+	do_lcd_command 0b00010000
 	mov r20, r10
 	rcall displayNumber
+    do_lcd_data '.'
+	do_lcd_data '.'
+	do_lcd_data '.'
+	do_lcd_data ' '
+
 
     reset_pot_LCD:
     ldi r16, RESET_POT_MODE
